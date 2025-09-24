@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coin Monkey - Agents</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div class="navbar bg-base-100 shadow-lg">
+    <div class="navbar-start">
+      <a class="btn btn-ghost text-xl" href="/">🐵 Coin Monkey</a>
+    </div>
+    <div class="navbar-center hidden lg:flex">
+      <ul class="menu menu-horizontal px-1">
+        <li><a href="/">Home</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a class="active">Console</a></li>
+      </ul>
+    </div>
+    <div class="navbar-end">
+      <a href="/#get-started" class="btn btn-ghost">Get Started</a>
+      <a href="/agents/new" class="btn btn-primary">New Agent</a>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 py-10">
+    <div class="flex items-center justify-between mb-6">
+      <h1 class="text-3xl font-bold">Your Agents</h1>
+      <a href="/agents/new" class="btn btn-primary">Create Agent</a>
+    </div>
+
+    {% if agents and agents|length > 0 %}
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for agent in agents %}
+          <div class="card bg-base-100 shadow-xl">
+            <div class="card-body">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h2 class="card-title">{{ agent.name }}</h2>
+                  <p class="text-sm text-gray-500">Strategy: {{ agent.strategy }}</p>
+                  <div class="mt-2 flex flex-wrap gap-2 items-center">
+                    {% set rt = runtime_status_map.get(agent.id, agent.status) %}
+                    <div class="badge {{ 'badge-success' if rt == 'running' else 'badge-ghost' }} badge-sm">Runtime: {{ rt }}</div>
+                    <div id="live-{{ agent.id }}" class="badge badge-outline badge-sm">Live: ?</div>
+                    <div id="ready-{{ agent.id }}" class="badge badge-outline badge-sm">Ready: ?</div>
+                  </div>
+                  {% if agent.created_at %}
+                    <p class="text-xs text-gray-400 mt-2">Created: {{ agent.created_at }}</p>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="card-actions justify-between mt-4">
+                <div class="join">
+                  {% if rt != 'running' %}
+                  <form method="POST" action="/agents/{{ agent.id }}/start">
+                    <button class="btn btn-sm join-item btn-primary" type="submit">Start</button>
+                  </form>
+                  {% else %}
+                  <form method="POST" action="/agents/{{ agent.id }}/stop">
+                    <button class="btn btn-sm join-item btn-warning" type="submit">Stop</button>
+                  </form>
+                  {% endif %}
+                  <form method="POST" action="/agents/{{ agent.id }}/redeploy">
+                    <button class="btn btn-sm join-item" type="submit">Redeploy</button>
+                  </form>
+                  <a href="/agents/{{ agent.id }}/metrics.txt" target="_blank" class="btn btn-sm join-item">Metrics</a>
+                </div>
+                <a href="/agents/{{ agent.id }}" class="btn btn-outline btn-sm">View</a>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+      <script>
+        (function(){
+          const ids = JSON.parse('{{ agents | map(attribute="id") | list | tojson | safe }}');
+          async function pollOne(id){
+            try {
+              const res = await fetch(`/agents/${id}/health.json`);
+              const data = await res.json();
+              const liveEl = document.getElementById(`live-${id}`);
+              const readyEl = document.getElementById(`ready-${id}`);
+              if (liveEl) {
+                if (data.live) { liveEl.textContent = 'Live: Yes'; liveEl.className = 'badge badge-success badge-sm'; }
+                else { liveEl.textContent = 'Live: No'; liveEl.className = 'badge badge-outline badge-sm'; }
+              }
+              if (readyEl) {
+                if (data.ready) { readyEl.textContent = 'Ready: Yes'; readyEl.className = 'badge badge-success badge-sm'; }
+                else { readyEl.textContent = 'Ready: No'; readyEl.className = 'badge badge-outline badge-sm'; }
+              }
+            } catch (e) {
+              const liveEl = document.getElementById(`live-${id}`);
+              const readyEl = document.getElementById(`ready-${id}`);
+              if (liveEl) { liveEl.textContent = 'Live: ?'; liveEl.className = 'badge badge-outline badge-sm'; }
+              if (readyEl) { readyEl.textContent = 'Ready: ?'; readyEl.className = 'badge badge-outline badge-sm'; }
+            }
+          }
+          async function pollAll(){
+            for (const id of ids) { pollOne(id); }
+            setTimeout(pollAll, 6000);
+          }
+          pollAll();
+        })();
+      </script>
+    {% else %}
+      <div class="text-center py-16">
+        <h2 class="text-xl font-semibold mb-2">No agents yet</h2>
+        <p class="text-gray-600 mb-6">Create your first agent to get started.</p>
+        <a href="/agents/new" class="btn btn-primary">Create Agent</a>
+      </div>
+    {% endif %}
+  </div>
+
+  <footer class="footer p-10 bg-base-200 text-base-content">
+    <div class="container mx-auto">
+      <div class="text-center">
+        <p>&copy; 2024 Coin Monkey. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

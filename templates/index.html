@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -16,6 +16,11 @@
                 </div>
                 <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-base-100 rounded-box w-52">
                     <li><a href="/">Home</a></li>
+                    <li><a href="/agents">Console</a></li>
+                    <li><a href="#agents">Agents</a></li>
+                    <li><a href="#how-it-works">How it works</a></li>
+                    <li><a href="#integrations">Integrations</a></li>
+                    <li><a href="#security">Security</a></li>
                     <li><a href="/about">About</a></li>
                 </ul>
             </div>
@@ -24,50 +29,253 @@
         <div class="navbar-center hidden lg:flex">
             <ul class="menu menu-horizontal px-1">
                 <li><a href="/">Home</a></li>
+                <li><a href="/agents">Console</a></li>
+                <li><a href="#agents">Agents</a></li>
+                <li><a href="#how-it-works">How it works</a></li>
+                <li><a href="#integrations">Integrations</a></li>
+                <li><a href="#security">Security</a></li>
                 <li><a href="/about">About</a></li>
             </ul>
         </div>
         <div class="navbar-end">
-            <a class="btn btn-primary">Get Started</a>
+            <a href="#get-started" class="btn btn-primary">Get Started</a>
         </div>
     </div>
 
-    <div class="hero min-h-screen bg-gradient-to-r from-yellow-400 to-orange-500">
+    <div class="hero min-h-[70vh] bg-gradient-to-r from-amber-500 to-orange-600">
         <div class="hero-overlay bg-opacity-60"></div>
         <div class="hero-content text-center text-neutral-content">
-            <div class="max-w-md">
-                <h1 class="mb-5 text-5xl font-bold">Welcome to Coin Monkey!</h1>
-                <p class="mb-5">Your friendly crypto companion for tracking and managing your digital assets.</p>
-                <button class="btn btn-primary">Get Started</button>
+            <div class="max-w-2xl">
+                <h1 class="mb-6 text-5xl font-extrabold">Run your own crypto trading agent</h1>
+                <p class="mb-8 text-lg opacity-90">Spin up containerized agents that trade across CEXs, EVM chains, and DeFi protocols. You own the strategy. We operate the infrastructure.</p>
+                <div class="flex flex-col sm:flex-row gap-3 justify-center">
+                    <a href="/agents/new" class="btn btn-primary btn-lg">Launch your Agent</a>
+                    <a href="#how-it-works" class="btn btn-outline btn-lg">How it works</a>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="container mx-auto px-4 py-12">
+    <div id="recent-agents" class="container mx-auto px-4 py-12">
+        <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold">Your Agents</h2>
+            <a href="/agents" class="btn btn-outline btn-sm">View all</a>
+        </div>
+        {% if agents and agents|length > 0 %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for agent in agents %}
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <h3 class="card-title">{{ agent.name }}</h3>
+                            <p class="text-sm text-gray-500">Strategy: {{ agent.strategy }}</p>
+                            <div class="mt-2 flex flex-wrap gap-2 items-center">
+                                {% set rt = runtime_status_map.get(agent.id, agent.status) %}
+                                <div class="badge {{ 'badge-success' if rt == 'running' else 'badge-ghost' }} badge-sm">Runtime: {{ rt }}</div>
+                                <div id="home-live-{{ agent.id }}" class="badge badge-outline badge-sm">Live: ?</div>
+                                <div id="home-ready-{{ agent.id }}" class="badge badge-outline badge-sm">Ready: ?</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-actions justify-between mt-4">
+                        <a href="/agents/{{ agent.id }}" class="btn btn-outline btn-sm">Open</a>
+                        <a href="/agents/{{ agent.id }}/metrics.txt" target="_blank" class="btn btn-sm">Metrics</a>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <script>
+            (function(){
+                const ids = JSON.parse('{{ agents | map(attribute="id") | list | tojson | safe }}');
+                async function pollOne(id){
+                    try {
+                        const res = await fetch(`/agents/${id}/health.json`);
+                        const data = await res.json();
+                        const liveEl = document.getElementById(`home-live-${id}`);
+                        const readyEl = document.getElementById(`home-ready-${id}`);
+                        if (liveEl) {
+                            if (data.live) { liveEl.textContent = 'Live: Yes'; liveEl.className = 'badge badge-success badge-sm'; }
+                            else { liveEl.textContent = 'Live: No'; liveEl.className = 'badge badge-outline badge-sm'; }
+                        }
+                        if (readyEl) {
+                            if (data.ready) { readyEl.textContent = 'Ready: Yes'; readyEl.className = 'badge badge-success badge-sm'; }
+                            else { readyEl.textContent = 'Ready: No'; readyEl.className = 'badge badge-outline badge-sm'; }
+                        }
+                    } catch (e) {
+                        const liveEl = document.getElementById(`home-live-${id}`);
+                        const readyEl = document.getElementById(`home-ready-${id}`);
+                        if (liveEl) { liveEl.textContent = 'Live: ?'; liveEl.className = 'badge badge-outline badge-sm'; }
+                        if (readyEl) { readyEl.textContent = 'Ready: ?'; readyEl.className = 'badge badge-outline badge-sm'; }
+                    }
+                }
+                async function pollAll(){
+                    for (const id of ids) { pollOne(id); }
+                    setTimeout(pollAll, 6000);
+                }
+                pollAll();
+            })();
+        </script>
+        {% else %}
+        <div class="text-center py-10">
+            <p class="text-gray-600 mb-4">You don't have any agents yet.</p>
+            <a href="/agents/new" class="btn btn-primary">Create Agent</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div id="agents" class="container mx-auto px-4 py-16">
         <div class="text-center mb-12">
-            <h2 class="text-3xl font-bold mb-4">Features</h2>
-            <p class="text-gray-600">Everything you need for crypto management</p>
+            <h2 class="text-3xl font-bold mb-4">Everything you need to run crypto trading agents</h2>
+            <p class="text-gray-600">CEX + EVM + DeFi connectivity, containerized execution, and enterprise-grade operations</p>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div class="card bg-base-100 shadow-xl">
                 <div class="card-body">
-                    <h3 class="card-title">📊 Portfolio Tracking</h3>
-                    <p>Monitor your crypto investments in real-time with comprehensive analytics.</p>
+                    <h3 class="card-title">🌐 Multi-venue Connectivity</h3>
+                    <p>Trade on CEXs and across EVM chains with first-class support for major DeFi protocols.</p>
                 </div>
             </div>
 
             <div class="card bg-base-100 shadow-xl">
                 <div class="card-body">
-                    <h3 class="card-title">🔒 Secure Storage</h3>
-                    <p>Your data is encrypted and stored securely with enterprise-grade protection.</p>
+                    <h3 class="card-title">📦 Containerized Execution</h3>
+                    <p>Your agent runs in isolated containers managed by us for reliability, scaling, and uptime.</p>
                 </div>
             </div>
 
             <div class="card bg-base-100 shadow-xl">
                 <div class="card-body">
-                    <h3 class="card-title">📈 Market Insights</h3>
-                    <p>Get real-time market data and AI-powered insights to make informed decisions.</p>
+                    <h3 class="card-title">🧠 Strategy Flexibility</h3>
+                    <p>Bring your own code or use curated strategies for market making, arbitrage, and more.</p>
+                </div>
+            </div>
+
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h3 class="card-title">🛡️ Risk Controls</h3>
+                    <p>Per-agent budgets, position limits, stop loss/take profit, and circuit breakers.</p>
+                </div>
+            </div>
+
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h3 class="card-title">📊 Observability</h3>
+                    <p>Live logs, metrics, and alerts so you can monitor, debug, and iterate quickly.</p>
+                </div>
+            </div>
+
+            <div class="card bg-base-100 shadow-xl">
+                <div class="card-body">
+                    <h3 class="card-title">🔑 Keys & Permissions</h3>
+                    <p>Segregated API keys, per-agent scopes, and audit trails to keep access safe.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="how-it-works" class="container mx-auto px-4 py-16">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold mb-4">How it works</h2>
+            <p class="text-gray-600">Create an agent, connect venues, deploy in seconds, monitor in real time</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div class="card bg-base-100 shadow-lg">
+                <div class="card-body">
+                    <div class="badge badge-primary badge-lg mb-3">1</div>
+                    <h3 class="card-title">Create your Agent</h3>
+                    <p>Name it, pick a template or bring your own strategy code.</p>
+                </div>
+            </div>
+            <div class="card bg-base-100 shadow-lg">
+                <div class="card-body">
+                    <div class="badge badge-primary badge-lg mb-3">2</div>
+                    <h3 class="card-title">Connect Keys & RPC</h3>
+                    <p>Securely add CEX API keys and EVM RPCs with least-privilege scopes.</p>
+                </div>
+            </div>
+            <div class="card bg-base-100 shadow-lg">
+                <div class="card-body">
+                    <div class="badge badge-primary badge-lg mb-3">3</div>
+                    <h3 class="card-title">Deploy</h3>
+                    <p>We spin up isolated containers for your agent with health checks and autoscale.</p>
+                </div>
+            </div>
+            <div class="card bg-base-100 shadow-lg">
+                <div class="card-body">
+                    <div class="badge badge-primary badge-lg mb-3">4</div>
+                    <h3 class="card-title">Observe & Iterate</h3>
+                    <p>Watch live logs, set alerts, and update strategies without downtime.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="integrations" class="container mx-auto px-4 pb-4">
+        <div class="text-center mb-8">
+            <h2 class="text-2xl font-bold mb-3">Integrations</h2>
+            <p class="text-gray-600">CEX, EVM chains, and DeFi protocols</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="card bg-base-100 shadow">
+                <div class="card-body">
+                    <h3 class="card-title">CEX</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <div class="badge badge-outline">Binance</div>
+                        <div class="badge badge-outline">Bybit</div>
+                        <div class="badge badge-outline">Coinbase</div>
+                        <div class="badge badge-outline">Kraken</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card bg-base-100 shadow">
+                <div class="card-body">
+                    <h3 class="card-title">EVM Chains</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <div class="badge badge-outline">Ethereum</div>
+                        <div class="badge badge-outline">Arbitrum</div>
+                        <div class="badge badge-outline">Base</div>
+                        <div class="badge badge-outline">Polygon</div>
+                        <div class="badge badge-outline">BSC</div>
+                        <div class="badge badge-outline">Optimism</div>
+                    </div>
+                </div>
+            </div>
+            <div class="card bg-base-100 shadow">
+                <div class="card-body">
+                    <h3 class="card-title">DeFi</h3>
+                    <div class="flex flex-wrap gap-2">
+                        <div class="badge badge-outline">Uniswap v2/v3</div>
+                        <div class="badge badge-outline">Aave</div>
+                        <div class="badge badge-outline">Curve</div>
+                        <div class="badge badge-outline">Balancer</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="security" class="container mx-auto px-4 py-16">
+        <div class="text-center mb-12">
+            <h2 class="text-3xl font-bold mb-4">Security & Operations</h2>
+            <p class="text-gray-600">Isolation, least-privilege access, and full auditability</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="card bg-base-100 shadow-xl"><div class="card-body"><h3 class="card-title">🔒 Isolated Containers</h3><p>Each agent runs in its own sandbox with strict resource limits.</p></div></div>
+            <div class="card bg-base-100 shadow-xl"><div class="card-body"><h3 class="card-title">🗝️ Key Management</h3><p>Encrypted key vault with per-agent scopes and rotation.</p></div></div>
+            <div class="card bg-base-100 shadow-xl"><div class="card-body"><h3 class="card-title">📜 Audit Logs</h3><p>End-to-end logs of actions, configs, and deployments.</p></div></div>
+        </div>
+    </div>
+
+    <div id="get-started" class="container mx-auto px-4 pb-16">
+        <div class="hero rounded-2xl bg-gradient-to-r from-yellow-400 to-orange-500">
+            <div class="hero-content text-center">
+                <div class="max-w-xl">
+                    <h2 class="text-4xl font-bold mb-4">Start your first agent</h2>
+                    <p class="mb-6 text-lg text-base-content/80">Join early access and be among the first to deploy containerized trading agents on Coin Monkey.</p>
+                    <a href="/about" class="btn btn-primary btn-lg">Request Early Access</a>
                 </div>
             </div>
         </div>

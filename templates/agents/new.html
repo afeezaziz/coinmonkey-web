@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coin Monkey - New Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div class="navbar bg-base-100 shadow-lg">
+    <div class="navbar-start">
+      <a class="btn btn-ghost text-xl" href="/">🐵 Coin Monkey</a>
+    </div>
+    <div class="navbar-center hidden lg:flex">
+      <ul class="menu menu-horizontal px-1">
+        <li><a href="/">Home</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a class="active">Console</a></li>
+      </ul>
+    </div>
+    <div class="navbar-end">
+      <a href="/agents" class="btn btn-ghost">Agents</a>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 py-10">
+    <div class="breadcrumbs text-sm mb-6">
+      <ul>
+        <li><a href="/agents">Agents</a></li>
+        <li>Create</li>
+      </ul>
+    </div>
+
+    <div class="max-w-2xl mx-auto">
+      <h1 class="text-3xl font-bold mb-6">Create a new Agent</h1>
+      <div class="card bg-base-100 shadow-xl">
+        <div class="card-body">
+          {% if error_msg %}
+          <div class="alert alert-error mb-4">
+            <span>{{ error_msg }}</span>
+          </div>
+          {% endif %}
+          <form action="/agents" method="POST" class="space-y-5">
+            <div class="form-control">
+              <label class="label"><span class="label-text">Name</span></label>
+              <input name="name" type="text" placeholder="My Alpha Bot" class="input input-bordered" value="{{ name or '' }}" required />
+            </div>
+
+            <div class="form-control">
+              <label class="label"><span class="label-text">Strategy</span></label>
+              <select name="strategy" class="select select-bordered">
+                <option value="custom" {{ 'selected' if (strategy or '') == 'custom' else '' }}>custom</option>
+                <option value="heartbeat" {{ 'selected' if (strategy or '') == 'heartbeat' else '' }}>heartbeat</option>
+                <option value="dryrun" {{ 'selected' if (strategy or '') == 'dryrun' else '' }}>dryrun</option>
+                <option value="orderbook" {{ 'selected' if (strategy or '') == 'orderbook' else '' }}>orderbook</option>
+                <option value="marketdata" {{ 'selected' if (strategy or '') == 'marketdata' else '' }}>marketdata</option>
+                <option value="sma" {{ 'selected' if (strategy or '') == 'sma' else '' }}>sma</option>
+              </select>
+            </div>
+
+            <div class="form-control">
+              <label class="label"><span class="label-text">Preferred Exchange (optional)</span></label>
+              <input name="exchange" type="text" placeholder="binance" class="input input-bordered" value="{{ exchange or '' }}" />
+              <label class="label">
+                <span class="label-text-alt">Overrides exchange for strategies that support it (e.g., dryrun).</span>
+              </label>
+            </div>
+
+            <div class="form-control">
+              <label class="label"><span class="label-text">Config (JSON)</span></label>
+              <textarea name="config" class="textarea textarea-bordered h-40" placeholder='{"pairs":["ETH/USDT","BTC/USDT"]}'>{{ config or '' }}</textarea>
+              <label class="label">
+                <span class="label-text-alt">Pass strategy parameters here (pairs, budget, risk, etc.).</span>
+              </label>
+              <div class="text-xs text-gray-500 space-y-1 mt-1">
+                <div><span class="font-semibold">dryrun:</span> {"pairs":["ETH/USDT","BTC/USDT"], "exchange":"binance"}</div>
+                <div><span class="font-semibold">orderbook:</span> {"pairs":["ETH/USDT"], "exchange":"binance", "depth":5}</div>
+                <div><span class="font-semibold">marketdata:</span> {"pairs":["ETH/USDT","BTC/USDT"], "exchange":"binance"}</div>
+                <div><span class="font-semibold">sma:</span> {"pair":"ETH/USDT", "exchange":"binance", "timeframe":"1m", "fast":9, "slow":21, "starting_cash":10000, "allocation":0.5, "fee_rate":0.001, "slippage_bps":5, "live_trading":false}</div>
+                <div class="mt-2">Add <code class="font-mono bg-base-200 px-1 rounded">"testnet": true</code> (or <code class="font-mono bg-base-200 px-1 rounded">"sandbox": true</code>) to use exchange sandbox/testnet where supported.</div>
+              </div>
+            </div>
+
+            <div class="flex gap-3 justify-end">
+              <a href="/agents" class="btn btn-ghost">Cancel</a>
+              <button type="submit" class="btn btn-primary">Create Agent</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer p-10 bg-base-200 text-base-content">
+    <div class="container mx-auto">
+      <div class="text-center">
+        <p>&copy; 2024 Coin Monkey. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

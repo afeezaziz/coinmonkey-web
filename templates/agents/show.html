@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coin Monkey - Agent Details</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div class="navbar bg-base-100 shadow-lg">
+    <div class="navbar-start">
+      <a class="btn btn-ghost text-xl" href="/">🐵 Coin Monkey</a>
+    </div>
+    <div class="navbar-center hidden lg:flex">
+      <ul class="menu menu-horizontal px-1">
+        <li><a href="/">Home</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a class="active">Console</a></li>
+      </ul>
+    </div>
+    <div class="navbar-end">
+      <a href="/agents" class="btn btn-ghost">Agents</a>
+      <a href="/agents/new" class="btn btn-primary">New Agent</a>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 py-10">
+    <div class="breadcrumbs text-sm mb-6">
+      <ul>
+        <li><a href="/agents">Agents</a></li>
+        <li>{{ agent.name }}</li>
+      </ul>
+    </div>
+    {% if error_msg %}
+    <div class="alert alert-error mb-6">
+      <span>{{ error_msg }}</span>
+    </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-6">
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h1 class="card-title text-3xl">{{ agent.name }}</h1>
+                <p class="text-sm text-gray-500">Strategy: {{ agent.strategy }}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="badge {{ 'badge-success' if runtime_status == 'running' else 'badge-ghost' }} badge-lg">{{ runtime_status|capitalize }}</div>
+                <div class="badge badge-outline">Desired: {{ agent.status|capitalize }}</div>
+                <div id="live-badge" class="badge badge-outline">Live: Unknown</div>
+                <div id="ready-badge" class="badge badge-outline">Ready: Unknown</div>
+              </div>
+            </div>
+
+            <div class="divider my-4"></div>
+
+            <div class="flex flex-wrap gap-2">
+              {% if runtime_status != 'running' %}
+              <form method="POST" action="/agents/{{ agent.id }}/start">
+                <button class="btn btn-primary" type="submit">Start</button>
+              </form>
+              {% else %}
+              <form method="POST" action="/agents/{{ agent.id }}/stop">
+                <button class="btn btn-warning" type="submit">Stop</button>
+              </form>
+              {% endif %}
+              <form method="POST" action="/agents/{{ agent.id }}/redeploy">
+                <button class="btn" type="submit">Redeploy</button>
+              </form>
+              <form method="POST" action="/agents/{{ agent.id }}/delete" onsubmit="return confirm('Delete this agent? This action cannot be undone.');">
+                <button class="btn btn-error" type="submit">Delete</button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">Positions &amp; PnL</h2>
+              <button id="refresh-positions" class="btn btn-sm">Refresh</button>
+            </div>
+            <div id="positions-box" class="text-sm overflow-x-auto"></div>
+            <script>
+              (function(){
+                const btn = document.getElementById('refresh-positions');
+                const box = document.getElementById('positions-box');
+                async function load(){
+                  btn.disabled = true; btn.textContent = 'Refreshing...';
+                  try {
+                    const res = await fetch('/agents/{{ agent.id }}/positions.json');
+                    const data = await res.json();
+                    const rows = (data.positions || []);
+                    if(rows.length === 0){
+                      box.innerHTML = '<p class="text-gray-500">No open positions.</p>';
+                    } else {
+                      const html = ['<table class="table text-sm">\n<thead><tr><th>Pair</th><th>Exchange</th><th>Size</th><th>Avg Entry</th><th>Last</th><th>Unrealized PnL</th><th>Realized PnL</th></tr></thead><tbody>'];
+                      for(const r of rows){
+                        html.push(`<tr><td>${r.pair}</td><td>${r.exchange}</td><td class="font-mono">${(r.size||0).toFixed(6)}</td><td class="font-mono">${(r.avg_entry||0).toFixed(6)}</td><td class="font-mono">${(r.last||0).toFixed(6)}</td><td class="font-mono ${r.unrealized_pnl>=0?'text-success':'text-error'}">${(r.unrealized_pnl||0).toFixed(4)}</td><td class="font-mono ${r.realized_pnl>=0?'text-success':'text-error'}">${(r.realized_pnl||0).toFixed(4)}</td></tr>`);
+                      }
+                      html.push('</tbody></table>');
+                      box.innerHTML = html.join('');
+                    }
+                  } catch(e) {
+                    box.innerHTML = '<p class="text-error">Failed to load positions.</p>';
+                  } finally {
+                    btn.disabled = false; btn.textContent = 'Refresh';
+                  }
+                }
+                btn.addEventListener('click', load);
+                setInterval(load, 20000);
+                load();
+              })();
+            </script>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">Recent Trades</h2>
+              <button id="refresh-trades" class="btn btn-sm">Refresh</button>
+            </div>
+            <div id="trades-box" class="text-sm overflow-x-auto"></div>
+            <script>
+              (function(){
+                const btn = document.getElementById('refresh-trades');
+                const box = document.getElementById('trades-box');
+                async function load(){
+                  btn.disabled = true; btn.textContent = 'Refreshing...';
+                  try {
+                    const res = await fetch('/agents/{{ agent.id }}/trades.json');
+                    const data = await res.json();
+                    const rows = (data.trades || []);
+                    if(rows.length === 0){
+                      box.innerHTML = '<p class="text-gray-500">No trades yet.</p>';
+                    } else {
+                      const html = ['<table class="table text-sm">\n<thead><tr><th>Time (UTC)</th><th>Side</th><th>Pair</th><th>Qty</th><th>Price</th><th>Notional</th><th>Realized PnL</th></tr></thead><tbody>'];
+                      for(const r of rows.slice(-100).reverse()){
+                        html.push(`<tr>
+                          <td class="font-mono">${r.ts}</td>
+                          <td class="${r.side==='buy'?'text-success':'text-error'}">${r.side}</td>
+                          <td>${r.pair}</td>
+                          <td class="font-mono">${Number(r.qty||0).toFixed(6)}</td>
+                          <td class="font-mono">${Number(r.price||0).toFixed(6)}</td>
+                          <td class="font-mono">${Number(r.notional||0).toFixed(2)}</td>
+                          <td class="font-mono ${Number(r.realized_pnl||0)>=0?'text-success':'text-error'}">${Number(r.realized_pnl||0).toFixed(4)}</td>
+                        </tr>`);
+                      }
+                      html.push('</tbody></table>');
+                      box.innerHTML = html.join('');
+                    }
+                  } catch(e) {
+                    box.innerHTML = '<p class="text-error">Failed to load trades.</p>';
+                  } finally {
+                    btn.disabled = false; btn.textContent = 'Refresh';
+                  }
+                }
+                btn.addEventListener('click', load);
+                setInterval(load, 20000);
+                load();
+              })();
+            </script>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Configuration</h2>
+            {% if agent.config %}
+              <pre class="mt-2 p-4 rounded bg-base-200 overflow-x-auto text-sm">{{ agent.config }}</pre>
+            {% else %}
+              <p class="text-gray-500">No config provided.</p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">Credentials</h2>
+              <div class="join">
+                <a href="/agents/{{ agent.id }}/credentials/new?type=evm_rpc" class="btn btn-sm join-item">Add EVM RPC</a>
+                <a href="/agents/{{ agent.id }}/credentials/new?type=cex" class="btn btn-sm join-item">Add CEX</a>
+              </div>
+            </div>
+            {% if credentials and credentials|length > 0 %}
+              <div class="overflow-x-auto">
+                <table class="table">
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Created</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for cred in credentials %}
+                    <tr>
+                      <td>{{ cred.name }}</td>
+                      <td><div class="badge badge-outline">{{ cred.ctype }}</div></td>
+                      <td class="text-sm text-gray-500">{{ cred.created_at }}</td>
+                      <td class="text-right">
+                        <a href="/agents/{{ agent.id }}/credentials/{{ cred.id }}/edit" class="btn btn-sm">Edit</a>
+                        <button type="button" class="btn btn-sm" onclick="testCred('{{ cred.id }}')">Test</button>
+                        <form method="POST" action="/agents/{{ agent.id }}/credentials/{{ cred.id }}/delete" onsubmit="return confirm('Delete this credential?');">
+                          <button type="submit" class="btn btn-sm btn-error">Delete</button>
+                        </form>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              <div class="mt-3">
+                <h3 class="font-semibold text-sm mb-2">Credential Test Output</h3>
+                <pre id="cred-test-out" class="p-3 bg-base-200 rounded text-xs overflow-x-auto"></pre>
+              </div>
+              <script>
+                async function testCred(id) {
+                  const out = document.getElementById('cred-test-out');
+                  out.textContent = 'Testing ' + id + '...';
+                  try {
+                    const res = await fetch('/agents/{{ agent.id }}/credentials/' + id + '/test.json');
+                    const data = await res.json();
+                    out.textContent = JSON.stringify(data, null, 2);
+                  } catch (e) {
+                    out.textContent = 'Error: ' + e;
+                  }
+                }
+              </script>
+            {% else %}
+              <p class="text-gray-500">No credentials yet. Add an EVM RPC or CEX API key.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Logs</h2>
+            <pre id="log-stream" class="mt-2 p-4 rounded bg-base-200 text-sm overflow-y-auto max-h-80"></pre>
+            <script>
+              (function() {
+                try {
+                  const pre = document.getElementById('log-stream');
+                  const es = new EventSource('/agents/{{ agent.id }}/logs/stream');
+                  es.onmessage = function(ev) {
+                    pre.textContent += ev.data + "\n";
+                    pre.scrollTop = pre.scrollHeight;
+                  };
+                  es.onerror = function() {
+                    // stop trying after error
+                    es.close();
+                  };
+                } catch (e) {
+                  // ignore
+                }
+              })();
+
+              // Fetch EVM address helper
+              (function(){
+                const fetchBtn = document.getElementById('fetch-addr');
+                const addrEl = document.getElementById('evm-address');
+                const copyBtn = document.getElementById('copy-addr');
+                async function loadAddr() {
+                  fetchBtn.disabled = true;
+                  fetchBtn.textContent = 'Fetching...';
+                  try {
+                    const res = await fetch('/agents/{{ agent.id }}/address.json');
+                    const data = await res.json();
+                    if (data && data.address) {
+                      addrEl.textContent = data.address;
+                    } else {
+                      addrEl.textContent = '(unavailable)';
+                    }
+                  } catch (e) {
+                    addrEl.textContent = '(error)';
+                  } finally {
+                    fetchBtn.disabled = false;
+                    fetchBtn.textContent = 'Fetch on-chain address';
+                  }
+                }
+                fetchBtn.addEventListener('click', loadAddr);
+                copyBtn.addEventListener('click', async () => {
+                  try {
+                    await navigator.clipboard.writeText(addrEl.textContent);
+                    copyBtn.textContent = 'Copied';
+                    setTimeout(()=>copyBtn.textContent='Copy', 1200);
+                  } catch(e) {}
+                });
+              })();
+
+              // Poll health badges
+              (function(){
+                const liveEl = document.getElementById('live-badge');
+                const readyEl = document.getElementById('ready-badge');
+                async function poll() {
+                  try {
+                    const res = await fetch('/agents/{{ agent.id }}/health.json');
+                    const data = await res.json();
+                    if (data.live) {
+                      liveEl.textContent = 'Live: Yes';
+                      liveEl.className = 'badge badge-success';
+                    } else {
+                      liveEl.textContent = 'Live: No';
+                      liveEl.className = 'badge badge-outline';
+                    }
+                    if (data.ready) {
+                      readyEl.textContent = 'Ready: Yes';
+                      readyEl.className = 'badge badge-success';
+                    } else {
+                      readyEl.textContent = 'Ready: No';
+                      readyEl.className = 'badge badge-outline';
+                    }
+                  } catch(e) {
+                    liveEl.textContent = 'Live: Unknown';
+                    readyEl.textContent = 'Ready: Unknown';
+                    liveEl.className = 'badge badge-outline';
+                    readyEl.className = 'badge badge-outline';
+                  } finally {
+                    setTimeout(poll, 6000);
+                  }
+                }
+                poll();
+              })();
+            </script>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">Metrics</h2>
+              <button id="refresh-metrics" class="btn btn-sm">Refresh</button>
+            </div>
+            <div class="text-sm mt-2 space-y-2">
+              <div id="metrics-prices" class="overflow-x-auto"></div>
+            </div>
+            <script>
+              (function(){
+                const btn = document.getElementById('refresh-metrics');
+                const prices = document.getElementById('metrics-prices');
+                const history = new Map(); // key: exchange|pair -> number[]
+                function parseMetrics(text){
+                  const lines = text.split('\n');
+                  const out = [];
+                  const re = /^agent_pair_last_price\{([^}]*)\}\s+([0-9.]+)$/;
+                  for(const line of lines){
+                    const m = line.match(re);
+                    if(!m) continue;
+                    const labels = {};
+                    for(const part of m[1].split(',')){
+                      const kv = part.split('=');
+                      if(kv.length===2) labels[kv[0]] = kv[1].replace(/^\"|\"$/g,'');
+                    }
+                    out.push({pair: labels.pair, exchange: labels.exchange, value: parseFloat(m[2])});
+                  }
+                  return out;
+                }
+                function sparkPath(values, w, h, pad){
+                  if(!values || values.length < 2) return '';
+                  const min = Math.min(...values);
+                  const max = Math.max(...values);
+                  const span = Math.max(1e-9, max - min);
+                  const n = values.length;
+                  const xStep = (w - 2*pad) / (n - 1);
+                  let d = '';
+                  for(let i=0;i<n;i++){
+                    const x = pad + i * xStep;
+                    const y = pad + (h - 2*pad) * (1 - (values[i] - min)/span);
+                    d += (i===0? 'M':'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+                  }
+                  return d.trim();
+                }
+                function sparkSvg(key){
+                  const w = 120, h = 32, pad = 2;
+                  const vals = history.get(key) || [];
+                  const d = sparkPath(vals, w, h, pad);
+                  const last = vals.length ? vals[vals.length-1] : 0;
+                  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+                    <polyline fill="none" stroke="#e5e7eb" stroke-width="1" points="${pad},${h/2} ${w-pad},${h/2}" />
+                    <path d="${d}" fill="none" stroke="#60a5fa" stroke-width="2" />
+                  </svg>`;
+                }
+                async function load(){
+                  btn.disabled = true; btn.textContent = 'Refreshing...';
+                  try {
+                    const res = await fetch('/agents/{{ agent.id }}/metrics.txt');
+                    const text = await res.text();
+                    const rows = parseMetrics(text);
+                    if(rows.length===0){
+                      prices.innerHTML = '<p class="text-gray-500">No price metrics yet.</p>';
+                    } else {
+                      const html = ['<table class="table text-sm">\n<thead><tr><th>Pair</th><th>Exchange</th><th>Last</th><th>Spark</th></tr></thead><tbody>'];
+                      for(const r of rows){
+                        const key = `${r.exchange}|${r.pair}`;
+                        const arr = history.get(key) || [];
+                        arr.push(r.value);
+                        if(arr.length > 30) arr.shift();
+                        history.set(key, arr);
+                        const spark = sparkSvg(key);
+                        html.push(`<tr><td>${r.pair}</td><td>${r.exchange}</td><td class="font-mono">${r.value}</td><td>${spark}</td></tr>`);
+                      }
+                      html.push('</tbody></table>');
+                      prices.innerHTML = html.join('');
+                    }
+                  } catch(e) {
+                    prices.innerHTML = '<p class="text-error">Failed to load metrics.</p>';
+                  } finally {
+                    btn.disabled = false; btn.textContent = 'Refresh';
+                  }
+                }
+                btn.addEventListener('click', load);
+                // Auto-refresh every 15s
+                setInterval(load, 15000);
+                // Initial
+                load();
+              })();
+            </script>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">CEX Connectivity</h2>
+              <button id="refresh-cex" class="btn btn-sm">Refresh</button>
+            </div>
+            <div class="text-sm mt-2 space-y-1">
+              <div class="flex justify-between"><span class="text-gray-500">Exchange</span><span id="cex-ex" class="font-mono">(none)</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Configured</span><span id="cex-conf" class="font-mono">false</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Connected</span><span id="cex-conn" class="font-mono">false</span></div>
+            </div>
+            <script>
+              (function(){
+                const btn = document.getElementById('refresh-cex');
+                const ex = document.getElementById('cex-ex');
+                const conf = document.getElementById('cex-conf');
+                const conn = document.getElementById('cex-conn');
+                async function load() {
+                  btn.disabled = true; btn.textContent = 'Refreshing...';
+                  try {
+                    const res = await fetch('/agents/{{ agent.id }}/cex.json');
+                    const data = await res.json();
+                    ex.textContent = data.exchange || '(none)';
+                    conf.textContent = String(!!data.configured);
+                    conn.textContent = String(!!data.connected);
+                  } catch (e) {
+                    ex.textContent = '(error)'; conf.textContent = 'false'; conn.textContent = 'false';
+                  } finally {
+                    btn.disabled = false; btn.textContent = 'Refresh';
+                  }
+                }
+                btn.addEventListener('click', load);
+              })();
+            </script>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Agent Settings</h2>
+            <form method="POST" action="/agents/{{ agent.id }}/update" class="space-y-3">
+              <div class="form-control">
+                <label class="label"><span class="label-text">Name</span></label>
+                <input type="text" name="name" class="input input-bordered" value="{{ agent.name }}" />
+              </div>
+              <div class="form-control">
+                <label class="label"><span class="label-text">Strategy</span></label>
+                <select name="strategy" class="select select-bordered">
+                  <option value="custom" {{ 'selected' if agent.strategy == 'custom' else '' }}>custom</option>
+                  <option value="heartbeat" {{ 'selected' if agent.strategy == 'heartbeat' else '' }}>heartbeat</option>
+                  <option value="dryrun" {{ 'selected' if agent.strategy == 'dryrun' else '' }}>dryrun</option>
+                  <option value="orderbook" {{ 'selected' if agent.strategy == 'orderbook' else '' }}>orderbook</option>
+                  <option value="sma" {{ 'selected' if agent.strategy == 'sma' else '' }}>sma</option>
+                </select>
+              </div>
+              <div class="form-control">
+                <label class="label"><span class="label-text">Preferred Exchange (optional)</span></label>
+                <input type="text" name="exchange" class="input input-bordered" value="{{ exchange_val or '' }}" placeholder="binance" />
+                <label class="label"><span class="label-text-alt">Stored under config.exchange; used by strategies like dryrun.</span></label>
+              </div>
+              <div class="form-control">
+                <label class="label"><span class="label-text">Config (JSON)</span></label>
+                <textarea name="config" class="textarea textarea-bordered h-40" placeholder='{"pairs":["ETH/USDT"]}'>{{ agent.config or '' }}</textarea>
+              </div>
+              <div class="form-control">
+                <label class="cursor-pointer label justify-start gap-3">
+                  <input type="checkbox" name="redeploy" value="1" class="checkbox" />
+                  <span class="label-text">Redeploy after saving</span>
+                </label>
+              </div>
+              <div class="flex justify-end">
+                <button type="submit" class="btn btn-primary">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">Alerts</h2>
+              <button id="alerts-check" class="btn btn-sm">Check Now</button>
+            </div>
+            {% if alerts and alerts|length > 0 %}
+            <div class="overflow-x-auto">
+              <table class="table text-sm">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Metric</th>
+                    <th>Operator</th>
+                    <th>Threshold</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for al in alerts %}
+                  <tr>
+                    <td>{{ al.name }}</td>
+                    <td class="font-mono">{{ al.metric }}</td>
+                    <td>{{ al.operator }}</td>
+                    <td class="font-mono">{{ al.threshold }}</td>
+                    <td class="text-right">
+                      <form method="POST" action="/agents/{{ agent.id }}/alerts/{{ al.id }}/delete" onsubmit="return confirm('Delete this alert?');">
+                        <button class="btn btn-xs btn-error" type="submit">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+              <p class="text-gray-500">No alerts configured.</p>
+            {% endif %}
+            <div class="divider"></div>
+            <form method="POST" action="/agents/{{ agent.id }}/alerts" class="space-y-3">
+              <div class="form-control">
+                <label class="label"><span class="label-text">Name</span></label>
+                <input name="name" type="text" class="input input-bordered" placeholder="My Alert" />
+              </div>
+              <div class="form-control">
+                <label class="label"><span class="label-text">Metric</span></label>
+                <input name="metric" type="text" class="input input-bordered" value="agent_pair_last_price" />
+              </div>
+              <div class="form-control">
+                <label class="label"><span class="label-text">Labels JSON (optional)</span></label>
+                <textarea name="labels" class="textarea textarea-bordered h-24" placeholder='{"pair":"ETH/USDT","exchange":"binance"}'></textarea>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div class="form-control">
+                  <label class="label"><span class="label-text">Operator</span></label>
+                  <select name="operator" class="select select-bordered">
+                    <option value="gt">gt</option>
+                    <option value="lt">lt</option>
+                  </select>
+                </div>
+                <div class="form-control">
+                  <label class="label"><span class="label-text">Threshold</span></label>
+                  <input name="threshold" type="number" step="any" class="input input-bordered" placeholder="1000" />
+                </div>
+              </div>
+              <div class="form-control">
+                <label class="label"><span class="label-text">Webhook URL</span></label>
+                <input name="webhook_url" type="url" class="input input-bordered" placeholder="https://example.com/hook" required />
+              </div>
+              <div class="flex justify-end">
+                <button type="submit" class="btn btn-primary">Create Alert</button>
+              </div>
+            </form>
+            <div class="mt-3">
+              <h3 class="font-semibold text-sm mb-1">Check Results</h3>
+              <pre id="alerts-out" class="p-3 bg-base-200 rounded text-xs overflow-x-auto"></pre>
+            </div>
+            <script>
+              (function(){
+                const btn = document.getElementById('alerts-check');
+                const out = document.getElementById('alerts-out');
+                async function run(){
+                  btn.disabled = true; btn.textContent = 'Checking...';
+                  try{
+                    const res = await fetch('/agents/{{ agent.id }}/alerts/check', {method: 'POST'});
+                    const data = await res.json();
+                    out.textContent = JSON.stringify(data, null, 2);
+                  }catch(e){
+                    out.textContent = 'Error: ' + e;
+                  } finally {
+                    btn.disabled = false; btn.textContent = 'Check Now';
+                  }
+                }
+                btn.addEventListener('click', run);
+              })();
+            </script>
+          </div>
+        </div>
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Agent Info</h2>
+            <div class="text-sm">
+              <div class="flex justify-between py-1"><span class="text-gray-500">ID</span><span class="font-mono">{{ agent.id }}</span></div>
+              {% if agent.created_at %}
+              <div class="flex justify-between py-1"><span class="text-gray-500">Created</span><span>{{ agent.created_at }}</span></div>
+              {% endif %}
+              <div class="py-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-500">EVM Address</span>
+                  <div class="flex items-center gap-2">
+                    <code id="evm-address" class="font-mono text-xs">(unknown)</code>
+                    <button id="copy-addr" class="btn btn-xs">Copy</button>
+                  </div>
+                </div>
+                <button id="fetch-addr" class="btn btn-sm btn-outline mt-2 w-full">Fetch on-chain address</button>
+              </div>
+              {% if host_port %}
+              <div class="py-2">
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-500">Runner Port</span>
+                  <code class="font-mono text-xs">{{ host_port }}</code>
+                </div>
+                <a class="btn btn-sm btn-outline mt-2 w-full" href="http://127.0.0.1:{{ host_port }}/metrics" target="_blank">Open Metrics</a>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">Wallet</h2>
+              <button id="refresh-wallet" class="btn btn-sm">Refresh</button>
+            </div>
+            <div class="text-sm mt-2 space-y-1">
+              <div class="flex justify-between"><span class="text-gray-500">Chain ID</span><span id="wallet-chain" class="font-mono">(unknown)</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">Balance</span><span id="wallet-balance" class="font-mono">(unknown)</span></div>
+              <div class="flex justify-between"><span class="text-gray-500">RPC OK</span><span id="wallet-rpc" class="font-mono">0</span></div>
+            </div>
+            <script>
+              (function(){
+                const btn = document.getElementById('refresh-wallet');
+                const chain = document.getElementById('wallet-chain');
+                const bal = document.getElementById('wallet-balance');
+                const rpc = document.getElementById('wallet-rpc');
+                async function load() {
+                  btn.disabled = true; btn.textContent = 'Refreshing...';
+                  try {
+                    const res = await fetch('/agents/{{ agent.id }}/wallet.json');
+                    const data = await res.json();
+                    chain.textContent = data.chainId || '(unknown)';
+                    if (typeof data.balance_eth === 'number') {
+                      bal.textContent = data.balance_eth.toFixed(6) + ' ETH';
+                    } else {
+                      bal.textContent = '(unknown)';
+                    }
+                    rpc.textContent = (data.rpc_ok !== undefined) ? String(data.rpc_ok) : '0';
+                  } catch (e) {
+                    chain.textContent = '(error)'; bal.textContent = '(error)'; rpc.textContent = '0';
+                  } finally {
+                    btn.disabled = false; btn.textContent = 'Refresh';
+                  }
+                }
+                btn.addEventListener('click', load);
+              })();
+            </script>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Next steps</h2>
+            <ul class="list-disc list-inside text-sm text-gray-600">
+              <li>Connect CEX API keys and EVM RPCs</li>
+              <li>Define pairs and risk limits</li>
+              <li>Deploy with health checks and alerts</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer p-10 bg-base-200 text-base-content">
+    <div class="container mx-auto">
+      <div class="text-center">
+        <p>&copy; 2024 Coin Monkey. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
