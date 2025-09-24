@@ -17,6 +17,7 @@
         <li><a href="/">Home</a></li>
         <li><a href="/about">About</a></li>
         <li><a class="active">Console</a></li>
+        <li><a href="/admin">Admin</a></li>
       </ul>
     </div>
     <div class="navbar-end">
@@ -67,13 +68,67 @@
                 <button class="btn btn-warning" type="submit">Stop</button>
               </form>
               {% endif %}
+              <form method="POST" action="/agents/{{ agent.id }}/restart">
+                <button class="btn" type="submit">Restart</button>
+              </form>
               <form method="POST" action="/agents/{{ agent.id }}/redeploy">
                 <button class="btn" type="submit">Redeploy</button>
+              </form>
+              <form method="POST" action="/agents/{{ agent.id }}/purge" onsubmit="return confirm('Purge container and volume for this agent?');">
+                <button class="btn btn-outline" type="submit">Purge</button>
               </form>
               <form method="POST" action="/agents/{{ agent.id }}/delete" onsubmit="return confirm('Delete this agent? This action cannot be undone.');">
                 <button class="btn btn-error" type="submit">Delete</button>
               </form>
             </div>
+          </div>
+        </div>
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">Recent Alert Events</h2>
+              <div class="text-sm text-gray-500">Latest 50</div>
+            </div>
+            {% if alert_events and alert_events|length > 0 %}
+            <div class="overflow-x-auto">
+              <table class="table text-sm">
+                <thead>
+                  <tr>
+                    <th>Time (UTC)</th>
+                    <th>Alert</th>
+                    <th>Metric</th>
+                    <th>Labels</th>
+                    <th>Value</th>
+                    <th>Success</th>
+                    <th>Status</th>
+                    <th>Error</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for ev in alert_events %}
+                  <tr>
+                    <td class="font-mono text-xs">{{ ev.fired_at }}</td>
+                    <td>{{ alert_name_map.get(ev.alert_id) or ev.alert_id }}</td>
+                    <td class="font-mono">{{ ev.metric }}</td>
+                    <td class="font-mono text-xs">{{ ev.labels_json }}</td>
+                    <td class="font-mono">{{ ev.value if ev.value is not none else '-' }}</td>
+                    <td>
+                      {% if ev.success %}
+                        <div class="badge badge-success">yes</div>
+                      {% else %}
+                        <div class="badge badge-ghost">no</div>
+                      {% endif %}
+                    </td>
+                    <td class="font-mono text-xs">{{ ev.status_code if ev.status_code is not none else '-' }}</td>
+                    <td class="text-xs text-gray-600">{{ ev.error or '' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+              <p class="text-gray-500">No alert events yet.</p>
+            {% endif %}
           </div>
         </div>
 
@@ -465,19 +520,21 @@
         <div class="card bg-base-100 shadow-xl">
           <div class="card-body">
             <h2 class="card-title">Agent Settings</h2>
-            <form method="POST" action="/agents/{{ agent.id }}/update" class="space-y-3">
+            <form id="agent-update-form" method="POST" action="/agents/{{ agent.id }}/update" class="space-y-3">
               <div class="form-control">
                 <label class="label"><span class="label-text">Name</span></label>
                 <input type="text" name="name" class="input input-bordered" value="{{ agent.name }}" />
               </div>
               <div class="form-control">
                 <label class="label"><span class="label-text">Strategy</span></label>
-                <select name="strategy" class="select select-bordered">
+                <select id="strategy-select" name="strategy" class="select select-bordered">
                   <option value="custom" {{ 'selected' if agent.strategy == 'custom' else '' }}>custom</option>
                   <option value="heartbeat" {{ 'selected' if agent.strategy == 'heartbeat' else '' }}>heartbeat</option>
                   <option value="dryrun" {{ 'selected' if agent.strategy == 'dryrun' else '' }}>dryrun</option>
                   <option value="orderbook" {{ 'selected' if agent.strategy == 'orderbook' else '' }}>orderbook</option>
+                  <option value="marketdata" {{ 'selected' if agent.strategy == 'marketdata' else '' }}>marketdata</option>
                   <option value="sma" {{ 'selected' if agent.strategy == 'sma' else '' }}>sma</option>
+                  <option value="defi" {{ 'selected' if agent.strategy == 'defi' else '' }}>defi</option>
                 </select>
               </div>
               <div class="form-control">
@@ -486,8 +543,117 @@
                 <label class="label"><span class="label-text-alt">Stored under config.exchange; used by strategies like dryrun.</span></label>
               </div>
               <div class="form-control">
+                <label class="label"><span class="label-text">Runner Image (optional)</span></label>
+                <input type="text" name="runner_image" class="input input-bordered" value="{{ runner_image_val or '' }}" placeholder="ghcr.io/coinmonkey/agent-runner:latest" />
+                <label class="label"><span class="label-text-alt">Stored under config.runner_image; used by Docker backend to override the default image.</span></label>
+              </div>
+              <div class="form-control">
                 <label class="label"><span class="label-text">Config (JSON)</span></label>
-                <textarea name="config" class="textarea textarea-bordered h-40" placeholder='{"pairs":["ETH/USDT"]}'>{{ agent.config or '' }}</textarea>
+                <textarea id="config-textarea" name="config" class="textarea textarea-bordered h-40" placeholder='{"pairs":["ETH/USDT"]}'>{{ agent.config or '' }}</textarea>
+                <div id="config-errors" class="text-sm text-error mt-2"></div>
+              </div>
+              <div class="collapse collapse-arrow bg-base-200">
+                <input type="checkbox" />
+                <div class="collapse-title text-md font-medium">SMA Config Helper</div>
+                <div class="collapse-content">
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="form-control">
+                      <label class="label"><span class="label-text">Pair</span></label>
+                      <input id="sma-pair" class="input input-bordered" placeholder="ETH/USDT" />
+                    </div>
+                    <div class="form-control">
+                      <label class="label"><span class="label-text">Exchange</span></label>
+                      <input id="sma-exchange" class="input input-bordered" placeholder="binance" value="{{ exchange_val or '' }}" />
+                    </div>
+                    <div class="form-control">
+                      <label class="label"><span class="label-text">Timeframe</span></label>
+                      <select id="sma-timeframe" class="select select-bordered">
+                        <option value="1m">1m</option>
+                        <option value="5m">5m</option>
+                        <option value="15m">15m</option>
+                        <option value="1h">1h</option>
+                      </select>
+                    </div>
+                    <div class="form-control">
+                      <label class="label"><span class="label-text">Fast SMA</span></label>
+                      <input id="sma-fast" type="number" class="input input-bordered" value="9" />
+                    </div>
+                    <div class="form-control">
+                      <label class="label"><span class="label-text">Slow SMA</span></label>
+                      <input id="sma-slow" type="number" class="input input-bordered" value="21" />
+                    </div>
+                    <div class="form-control">
+                      <label class="label"><span class="label-text">Starting Cash</span></label>
+                      <input id="sma-starting-cash" type="number" step="any" class="input input-bordered" value="10000" />
+                    </div>
+                    <div class="form-control">
+                      <label class="label"><span class="label-text">Allocation</span></label>
+                      <input id="sma-allocation" type="number" step="any" class="input input-bordered" value="0.5" />
+                    </div>
+                    <div class="form-control">
+                      <label class="label"><span class="label-text">Fee Rate</span></label>
+                      <input id="sma-fee-rate" type="number" step="any" class="input input-bordered" value="0.001" />
+                    </div>
+                    <div class="form-control">
+                      <label class="label"><span class="label-text">Slippage (bps)</span></label>
+                      <input id="sma-slippage-bps" type="number" class="input input-bordered" value="5" />
+                    </div>
+                    <div class="form-control">
+                      <label class="cursor-pointer label justify-start gap-3">
+                        <input id="sma-live" type="checkbox" class="checkbox" />
+                        <span class="label-text">Live trading</span>
+                      </label>
+                    </div>
+                    <div class="form-control">
+                      <label class="cursor-pointer label justify-start gap-3">
+                        <input id="sma-testnet" type="checkbox" class="checkbox" />
+                        <span class="label-text">Testnet/Sandbox</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="mt-3 flex gap-2">
+                    <button type="button" class="btn btn-outline btn-sm" onclick="(function(){
+                      const cfgEl = document.getElementById('config-textarea');
+                      let cfg = {};
+                      try{ cfg = JSON.parse(cfgEl.value||'{}'); if(typeof cfg !== 'object' || Array.isArray(cfg)) cfg = {}; }catch(e){ cfg = {}; }
+                      const o = {
+                        pair: document.getElementById('sma-pair').value.trim() || 'ETH/USDT',
+                        exchange: document.getElementById('sma-exchange').value.trim() || undefined,
+                        timeframe: document.getElementById('sma-timeframe').value,
+                        fast: Number(document.getElementById('sma-fast').value||9),
+                        slow: Number(document.getElementById('sma-slow').value||21),
+                        starting_cash: Number(document.getElementById('sma-starting-cash').value||10000),
+                        allocation: Number(document.getElementById('sma-allocation').value||0.5),
+                        fee_rate: Number(document.getElementById('sma-fee-rate').value||0.001),
+                        slippage_bps: Number(document.getElementById('sma-slippage-bps').value||5),
+                        live_trading: !!document.getElementById('sma-live').checked,
+                      };
+                      if(document.getElementById('sma-testnet').checked) o.testnet = true;
+                      // Merge into cfg
+                      Object.assign(cfg, o);
+                      cfgEl.value = JSON.stringify(cfg, null, 2);
+                    })()">Apply to JSON</button>
+                    <button type="button" class="btn btn-outline btn-sm" onclick="(function(){
+                      const cfgEl = document.getElementById('config-textarea');
+                      try{
+                        const cfg = JSON.parse(cfgEl.value||'{}');
+                        if (cfg && typeof cfg === 'object'){
+                          if (cfg.pair) document.getElementById('sma-pair').value = cfg.pair;
+                          if (cfg.exchange) document.getElementById('sma-exchange').value = cfg.exchange;
+                          if (cfg.timeframe) document.getElementById('sma-timeframe').value = cfg.timeframe;
+                          if (cfg.fast!=null) document.getElementById('sma-fast').value = cfg.fast;
+                          if (cfg.slow!=null) document.getElementById('sma-slow').value = cfg.slow;
+                          if (cfg.starting_cash!=null) document.getElementById('sma-starting-cash').value = cfg.starting_cash;
+                          if (cfg.allocation!=null) document.getElementById('sma-allocation').value = cfg.allocation;
+                          if (cfg.fee_rate!=null) document.getElementById('sma-fee-rate').value = cfg.fee_rate;
+                          if (cfg.slippage_bps!=null) document.getElementById('sma-slippage-bps').value = cfg.slippage_bps;
+                          document.getElementById('sma-live').checked = !!cfg.live_trading;
+                          document.getElementById('sma-testnet').checked = !!cfg.testnet || !!cfg.sandbox;
+                        }
+                      }catch(e){}
+                    })()">Load from JSON</button>
+                  </div>
+                </div>
               </div>
               <div class="form-control">
                 <label class="cursor-pointer label justify-start gap-3">
@@ -499,6 +665,56 @@
                 <button type="submit" class="btn btn-primary">Save</button>
               </div>
             </form>
+            <script>
+              (function(){
+                function parseJSON(s){ try{ const v = JSON.parse(s||'{}'); return (v && typeof v==='object' && !Array.isArray(v))? v : {}; }catch(e){ return null; } }
+                function isString(x){ return typeof x === 'string' && x.trim().length>0; }
+                function isPosInt(x){ return Number.isInteger(x) && x > 0; }
+                function isNonNegNum(x){ return typeof x === 'number' && x >= 0; }
+                function validate(strategy, cfg){
+                  const errs = [];
+                  if (strategy === 'dryrun' || strategy === 'orderbook' || strategy === 'marketdata'){
+                    if (!cfg || !Array.isArray(cfg.pairs) || cfg.pairs.length === 0){ errs.push('config.pairs: must be a non-empty array of symbols'); }
+                    else if (!cfg.pairs.every(p => typeof p === 'string' && p.trim().length>0)) { errs.push('config.pairs: all entries must be non-empty strings'); }
+                    if (strategy === 'orderbook' && cfg.depth!=null){ if (!isPosInt(cfg.depth)) errs.push('config.depth: must be an integer >= 1'); }
+                  } else if (strategy === 'sma'){
+                    if (!isString(cfg.pair)) errs.push('config.pair: required non-empty string');
+                    const tfOK = ['1m','5m','15m','1h'];
+                    if (!tfOK.includes(String(cfg.timeframe))) errs.push('config.timeframe: required, one of '+tfOK.join(', '));
+                    if (!isPosInt(Number(cfg.fast))) errs.push('config.fast: required integer > 0');
+                    if (!isPosInt(Number(cfg.slow))) errs.push('config.slow: required integer > 0');
+                    if (cfg.starting_cash!=null && !isNonNegNum(Number(cfg.starting_cash))) errs.push('config.starting_cash: must be >= 0');
+                    if (cfg.allocation!=null){ const a = Number(cfg.allocation); if (!(a>=0 && a<=1)) errs.push('config.allocation: must be between 0 and 1'); }
+                    if (cfg.fee_rate!=null){ const f = Number(cfg.fee_rate); if (!(f>=0 && f<=0.01)) errs.push('config.fee_rate: must be between 0 and 0.01'); }
+                    if (cfg.slippage_bps!=null && !isNonNegNum(Number(cfg.slippage_bps))) errs.push('config.slippage_bps: must be >= 0');
+                  } else if (strategy === 'defi'){
+                    if (!isString(cfg.base_token)) errs.push('config.base_token: required non-empty string (ERC20 address)');
+                    if (!isString(cfg.quote_token)) errs.push('config.quote_token: required non-empty string (ERC20 address)');
+                    if (!isPosInt(Number(cfg.chain_id))) errs.push('config.chain_id: required integer > 0');
+                    if (cfg.slippage_bps!=null && !isNonNegNum(Number(cfg.slippage_bps))) errs.push('config.slippage_bps: must be >= 0');
+                    if (cfg.min_trade_usd!=null && !isNonNegNum(Number(cfg.min_trade_usd))) errs.push('config.min_trade_usd: must be >= 0');
+                  }
+                  return errs;
+                }
+                const form = document.getElementById('agent-update-form');
+                if (form){
+                  form.addEventListener('submit', function(ev){
+                    const strat = (document.getElementById('strategy-select')||{}).value || 'custom';
+                    const cfgRaw = (document.getElementById('config-textarea')||{}).value || '';
+                    const errBox = document.getElementById('config-errors');
+                    errBox.textContent = '';
+                    const parsed = parseJSON(cfgRaw);
+                    if (parsed === null){
+                      ev.preventDefault(); errBox.textContent = 'Invalid JSON in config.'; return false;
+                    }
+                    const errs = validate(strat, parsed||{});
+                    if (errs.length){ ev.preventDefault(); errBox.textContent = errs.join('\n'); return false; }
+                    try{ (document.getElementById('config-textarea')).value = JSON.stringify(parsed||{}, null, 2); }catch(e){}
+                    return true;
+                  });
+                }
+              })();
+            </script>
           </div>
         </div>
         <div class="card bg-base-100 shadow-xl">
@@ -516,6 +732,8 @@
                     <th>Metric</th>
                     <th>Operator</th>
                     <th>Threshold</th>
+                    <th>Enabled</th>
+                    <th>Last Fired</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -526,8 +744,19 @@
                     <td class="font-mono">{{ al.metric }}</td>
                     <td>{{ al.operator }}</td>
                     <td class="font-mono">{{ al.threshold }}</td>
-                    <td class="text-right">
-                      <form method="POST" action="/agents/{{ agent.id }}/alerts/{{ al.id }}/delete" onsubmit="return confirm('Delete this alert?');">
+                    <td>
+                      {% if al.enabled %}
+                        <div class="badge badge-success">enabled</div>
+                      {% else %}
+                        <div class="badge badge-ghost">disabled</div>
+                      {% endif %}
+                    </td>
+                    <td class="text-sm text-gray-500">{{ al.last_fired_at or '-' }}</td>
+                    <td class="text-right space-x-1">
+                      <form method="POST" action="/agents/{{ agent.id }}/alerts/{{ al.id }}/toggle" class="inline">
+                        <button class="btn btn-xs" type="submit">{{ 'Disable' if al.enabled else 'Enable' }}</button>
+                      </form>
+                      <form method="POST" action="/agents/{{ agent.id }}/alerts/{{ al.id }}/delete" onsubmit="return confirm('Delete this alert?');" class="inline">
                         <button class="btn btn-xs btn-error" type="submit">Delete</button>
                       </form>
                     </td>
@@ -540,7 +769,7 @@
               <p class="text-gray-500">No alerts configured.</p>
             {% endif %}
             <div class="divider"></div>
-            <form method="POST" action="/agents/{{ agent.id }}/alerts" class="space-y-3">
+            <form id="alerts-create-form" method="POST" action="/agents/{{ agent.id }}/alerts" class="space-y-3">
               <div class="form-control">
                 <label class="label"><span class="label-text">Name</span></label>
                 <input name="name" type="text" class="input input-bordered" placeholder="My Alert" />
@@ -570,6 +799,13 @@
                 <label class="label"><span class="label-text">Webhook URL</span></label>
                 <input name="webhook_url" type="url" class="input input-bordered" placeholder="https://example.com/hook" required />
               </div>
+              <div id="alerts-errors" class="text-sm text-error mt-2"></div>
+              <div class="form-control">
+                <label class="cursor-pointer label justify-start gap-3">
+                  <input type="checkbox" name="enabled" class="checkbox" checked />
+                  <span class="label-text">Enabled</span>
+                </label>
+              </div>
               <div class="flex justify-end">
                 <button type="submit" class="btn btn-primary">Create Alert</button>
               </div>
@@ -585,7 +821,7 @@
                 async function run(){
                   btn.disabled = true; btn.textContent = 'Checking...';
                   try{
-                    const res = await fetch('/agents/{{ agent.id }}/alerts/check', {method: 'POST'});
+                    const res = await fetch('/agents/{{ agent.id }}/alerts/check', {method: 'POST', headers: {'X-CSRF-Token': '{{ csrf_token() }}'}});
                     const data = await res.json();
                     out.textContent = JSON.stringify(data, null, 2);
                   }catch(e){
@@ -595,6 +831,38 @@
                   }
                 }
                 btn.addEventListener('click', run);
+              })();
+            </script>
+            <script>
+              (function(){
+                const form = document.getElementById('alerts-create-form');
+                if (!form) return;
+                function parseLabels(s){
+                  if (!s || !s.trim()) return {};
+                  try{ const v = JSON.parse(s); return (v && typeof v==='object' && !Array.isArray(v))? v : null; }catch(e){ return null; }
+                }
+                form.addEventListener('submit', function(ev){
+                  const errBox = document.getElementById('alerts-errors');
+                  errBox.textContent = '';
+                  const metric = (form.querySelector('input[name="metric"]')||{}).value || '';
+                  const operator = (form.querySelector('select[name="operator"]')||{}).value || 'gt';
+                  const threshold = Number((form.querySelector('input[name="threshold"]')||{}).value || '');
+                  const labelsRaw = (form.querySelector('textarea[name="labels"]')||{}).value || '';
+                  const webhook = (form.querySelector('input[name="webhook_url"]')||{}).value || '';
+                  const errs = [];
+                  if (!metric.trim()) errs.push('metric: required');
+                  if (!(operator==='gt' || operator==='lt')) errs.push('operator: must be gt or lt');
+                  if (!Number.isFinite(threshold)) errs.push('threshold: must be a number');
+                  const parsed = parseLabels(labelsRaw);
+                  if (parsed === null) errs.push('labels: must be valid JSON object');
+                  try{ const u = new URL(webhook); if (!(u.protocol==='http:'||u.protocol==='https:')) errs.push('webhook_url: must be http(s)'); }catch(e){ errs.push('webhook_url: invalid URL'); }
+                  if (errs.length){ ev.preventDefault(); errBox.textContent = errs.join('\n'); return false; }
+                  // Pretty print labels
+                  if (labelsRaw.trim() && parsed){
+                    try{ form.querySelector('textarea[name="labels"]').value = JSON.stringify(parsed, null, 2); }catch(e){}
+                  }
+                  return true;
+                });
               })();
             </script>
           </div>
@@ -692,5 +960,20 @@
       </div>
     </div>
   </footer>
+  <script>
+    (function(){
+      try {
+        const token = '{{ csrf_token() }}';
+        const forms = document.querySelectorAll('form[method="POST"], form[method="post"]');
+        for (const f of forms) {
+          if (!f.querySelector('input[name="csrf_token"]')) {
+            const i = document.createElement('input');
+            i.type = 'hidden'; i.name = 'csrf_token'; i.value = token;
+            f.appendChild(i);
+          }
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
 </body>
 </html>

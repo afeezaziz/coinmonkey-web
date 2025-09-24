@@ -1,0 +1,71 @@
+groups:
+  - name: coinmonkey-app
+    interval: 30s
+    rules:
+      - alert: AppDown
+        expr: absent(cm_app_live)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CoinMonkey app metrics absent (app may be down)"
+          description: "Prometheus cannot scrape cm_app_live from the app."
+
+      - alert: HighHttpErrorRate
+        expr: |
+          sum(rate(cm_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum(rate(cm_http_requests_total[5m]))
+          > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High HTTP 5xx error rate (>5%)"
+          description: "Investigate recent errors in application logs."
+
+      - alert: HighHttpLatencyP95
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(cm_http_request_latency_seconds_bucket[5m])))
+          > 1.0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP latency p95 > 1s"
+          description: "Requests are experiencing high tail latency."
+
+      - alert: SchedulerErrorsDetected
+        expr: rate(cm_scheduler_errors_total[5m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alerts scheduler is erroring"
+          description: "There are scheduler loop errors in the last 5m."
+
+      - alert: WebhookErrorRateHigh
+        expr: |
+          sum(rate(cm_alert_webhook_attempts_total{result="error"}[5m]))
+          /
+          sum(rate(cm_alert_webhook_attempts_total[5m]))
+          > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Alert webhook error rate > 20%"
+          description: "Troubleshoot alert webhook receivers and network."
+
+      - alert: OrchestratorActionErrorsHigh
+        expr: |
+          sum(rate(cm_orchestrator_actions_total{result="error"}[5m]))
+          /
+          sum(rate(cm_orchestrator_actions_total[5m]))
+          > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Orchestrator action error rate > 20%"
+          description: "Investigate orchestrator connectivity or configuration."

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coin Monkey - Admin</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div class="navbar bg-base-100 shadow-lg">
+    <div class="navbar-start">
+      <a class="btn btn-ghost text-xl" href="/">🐵 Coin Monkey</a>
+    </div>
+    <div class="navbar-center hidden lg:flex">
+      <ul class="menu menu-horizontal px-1">
+        <li><a href="/">Home</a></li>
+        <li><a href="/agents">Console</a></li>
+        <li><a class="active">Admin</a></li>
+      </ul>
+    </div>
+    <div class="navbar-end">
+      <a href="/agents" class="btn btn-ghost">Agents</a>
+      <a href="/agents/new" class="btn btn-primary">New Agent</a>
+      <form method="POST" action="/logout" class="ml-2">
+        <button type="submit" class="btn btn-ghost">Logout</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 py-10">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-6">
+      <div>
+        <h1 class="text-3xl font-bold">Admin Dashboard</h1>
+        <p class="text-sm text-gray-500">Backend: <span class="font-mono">{{ backend }}</span> • Agent Image: <span class="font-mono">{{ agent_image or '(default)' }}</span></p>
+      </div>
+      <div class="join">
+        <form method="POST" action="/admin/agents/start_all" class="join-item"><button class="btn btn-primary">Start All</button></form>
+        <form method="POST" action="/admin/agents/stop_all" class="join-item"><button class="btn btn-warning">Stop All</button></form>
+        <form method="POST" action="/admin/agents/restart_all" class="join-item"><button class="btn">Restart All</button></form>
+        <form method="POST" action="/admin/agents/redeploy_all" class="join-item"><button class="btn">Redeploy All</button></form>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-6">
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">Agents</h2>
+              <a href="/agents" class="btn btn-sm">Open Console</a>
+            </div>
+            {% if agents and agents|length > 0 %}
+            <div class="overflow-x-auto">
+              <table class="table text-sm">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Strategy</th>
+                    <th>Status</th>
+                    <th>Port</th>
+                    <th class="text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for a in agents %}
+                  {% set rt = runtime.get(a.id, a.status) %}
+                  <tr data-agent-id="{{ a.id }}" data-runner-image="{{ rimages.get(a.id) or '' }}">
+                    <td><a class="link" href="/agents/{{ a.id }}">{{ a.name }}</a></td>
+                    <td class="text-gray-500">
+                      {{ a.strategy }}
+                      {% if rimages.get(a.id) %}
+                        <div class="text-xs text-gray-400">Image: {{ rimages.get(a.id) }}</div>
+                      {% endif %}
+                    </td>
+                    <td>
+                      <div class="badge {{ 'badge-success' if rt == 'running' else 'badge-ghost' }} badge-sm">{{ rt }}</div>
+                    </td>
+                    <td class="font-mono text-xs">{{ ports.get(a.id) or '-' }}</td>
+                    <td class="text-right">
+                      <div class="join">
+                        {% if rt != 'running' %}
+                        <form method="POST" action="/agents/{{ a.id }}/start" class="join-item"><button class="btn btn-xs btn-primary">Start</button></form>
+                        {% else %}
+                        <form method="POST" action="/agents/{{ a.id }}/stop" class="join-item"><button class="btn btn-xs btn-warning">Stop</button></form>
+                        {% endif %}
+                        <form method="POST" action="/agents/{{ a.id }}/restart" class="join-item"><button class="btn btn-xs">Restart</button></form>
+                        <form method="POST" action="/agents/{{ a.id }}/redeploy" class="join-item"><button class="btn btn-xs">Redeploy</button></form>
+                        <form method="POST" action="/agents/{{ a.id }}/purge" class="join-item" onsubmit="return confirm('Purge container and volume for this agent?');"><button class="btn btn-xs btn-outline">Purge</button></form>
+                        <button type="button" class="btn btn-xs join-item" onclick="openEnv('{{ a.id }}')">Env</button>
+                        <button type="button" class="btn btn-xs join-item" onclick="openImage('{{ a.id }}')">Image</button>
+                        <a href="/agents/{{ a.id }}/metrics.txt" target="_blank" class="btn btn-xs join-item">Metrics</a>
+                      </div>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+              <p class="text-gray-500">No agents yet.</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <div class="flex items-center justify-between">
+              <h2 class="card-title">Docker Containers</h2>
+              <button id="refresh-docker" class="btn btn-sm">Refresh</button>
+            </div>
+            <div id="docker-box" class="text-sm overflow-x-auto"></div>
+            <script>
+              (function(){
+                const btn = document.getElementById('refresh-docker');
+                const box = document.getElementById('docker-box');
+                function fmtBytes(b){
+                  if (!b || b <= 0) return '0 B';
+                  const units = ['B','KB','MB','GB','TB'];
+                  let i = 0; let v = b;
+                  while (v >= 1024 && i < units.length-1){ v/=1024; i++; }
+                  return v.toFixed(1)+' '+units[i];
+                }
+                function openLogs(name){
+                  const dlg = document.getElementById('logs-modal');
+                  const pre = document.getElementById('logs-pre');
+                  const title = document.getElementById('logs-title');
+                  const follow = document.getElementById('logs-follow');
+                  const clearBtn = document.getElementById('logs-clear');
+                  title.textContent = 'Logs: '+name;
+                  pre.textContent = 'Loading...';
+                  dlg.showModal();
+                  // Self-contained EventSource lifecycle
+                  let es = null;
+                  function stopFollow(){ if (es) { try{ es.close(); }catch(e){} es = null; } }
+                  function startFollow(){
+                    stopFollow();
+                    es = new EventSource('/admin/containers/'+encodeURIComponent(name)+'/logs/stream?lines=300');
+                    es.onmessage = function(ev){ pre.textContent += ev.data + '\n'; pre.scrollTop = pre.scrollHeight; };
+                    es.onerror = function(){ /* ignore */ };
+                  }
+                  follow.checked = false;
+                  dlg.onclose = () => { stopFollow(); };
+                  fetch('/admin/containers/'+encodeURIComponent(name)+'/logs?lines=300')
+                    .then(r=>r.json())
+                    .then(d=>{
+                      if (d.error) pre.textContent = 'Error: '+d.error; else pre.textContent = d.logs || '';
+                    })
+                    .catch(e=>{ pre.textContent = 'Error: '+e; });
+                  follow.onchange = function(){ if (follow.checked) startFollow(); else stopFollow(); };
+                  clearBtn.onclick = function(){ pre.textContent = ''; };
+                }
+                async function load(){
+                  btn.disabled = true; btn.textContent = 'Refreshing...';
+                  try {
+                    const res = await fetch('/admin/docker.json');
+                    const data = await res.json();
+                    if (data.error) {
+                      box.innerHTML = `<p class="text-error">${data.error}</p>`;
+                      return;
+                    }
+                    const containers = data.containers || [];
+                    if (containers.length === 0) {
+                      box.innerHTML = '<p class="text-gray-500">No agent containers found.</p>';
+                      return;
+                    }
+                    const html = ['<table class="table text-sm">\n<thead><tr><th>ID</th><th>Name</th><th>Status</th><th>CPU</th><th>Mem</th><th>Image</th><th>Ports</th><th></th></tr></thead><tbody>'];
+                    for (const c of containers) {
+                      const ports = typeof c.ports === 'object' ? JSON.stringify(c.ports) : String(c.ports||'');
+                      const cpu = (c.cpu_percent==null?'-':c.cpu_percent.toFixed(1)+'%');
+                      const mem = (c.mem_usage==null?'-':fmtBytes(c.mem_usage)) + (c.mem_percent!=null? ` (${c.mem_percent.toFixed(1)}%)` : '');
+                      const agentId = (c.name||'').startsWith('agent-') ? (c.name.substring(6)) : '';
+                      html.push(`<tr>
+                        <td class="font-mono">${c.id}</td>
+                        <td>${c.name}</td>
+                        <td>${c.status}</td>
+                        <td>${cpu}</td>
+                        <td>${mem}</td>
+                        <td class="font-mono text-xs">${c.image||''}</td>
+                        <td class="font-mono text-xs">${ports}</td>
+                        <td class="text-right">
+                          <div class="join">
+                            <button class="btn btn-xs join-item" onclick="(${openLogs.toString()})('${c.name}')">Logs</button>
+                            ${agentId ? `<a class="btn btn-xs join-item" href="/agents/${agentId}" target="_blank">Open</a>` : ''}
+                          </div>
+                        </td>
+                      </tr>`);
+                    }
+                    html.push('</tbody></table>');
+                    box.innerHTML = html.join('');
+                  } catch(e) {
+                    box.innerHTML = '<p class="text-error">Failed to load docker info.</p>';
+                  } finally {
+                    btn.disabled = false; btn.textContent = 'Refresh';
+                  }
+                }
+                btn.addEventListener('click', load);
+                setInterval(load, 15000);
+                load();
+              })();
+            </script>
+            <dialog id="logs-modal" class="modal">
+              <div class="modal-box max-w-4xl">
+                <h3 id="logs-title" class="font-bold text-lg">Logs</h3>
+                <pre id="logs-pre" class="p-3 bg-base-200 rounded text-xs overflow-x-auto max-h-96"></pre>
+                <div class="flex items-center justify-between mt-2">
+                  <label class="cursor-pointer label justify-start gap-2">
+                    <input type="checkbox" id="logs-follow" class="checkbox checkbox-sm" />
+                    <span class="label-text">Follow</span>
+                  </label>
+                  <button id="logs-clear" class="btn btn-xs" type="button">Clear</button>
+                </div>
+                <div class="modal-action">
+                  <form method="dialog">
+                    <button class="btn">Close</button>
+                  </form>
+                </div>
+              </div>
+              <form method="dialog" class="modal-backdrop">
+                <button>close</button>
+              </form>
+            </dialog>
+
+            <dialog id="env-modal" class="modal">
+              <div class="modal-box max-w-3xl">
+                <h3 id="env-title" class="font-bold text-lg">Env</h3>
+                <pre id="env-pre" class="p-3 bg-base-200 rounded text-xs overflow-x-auto max-h-96"></pre>
+                <div class="flex items-center justify-between mt-2">
+                  <label class="cursor-pointer label justify-start gap-2">
+                    <input type="checkbox" id="env-reveal" class="checkbox checkbox-sm" />
+                    <span class="label-text">Reveal secrets</span>
+                  </label>
+                  <button id="env-copy" class="btn btn-xs" type="button">Copy</button>
+                </div>
+                <div class="modal-action">
+                  <form method="dialog"><button class="btn">Close</button></form>
+                </div>
+              </div>
+              <form method="dialog" class="modal-backdrop"><button>close</button></form>
+            </dialog>
+
+            <dialog id="image-modal" class="modal">
+              <div class="modal-box max-w-md">
+                <h3 id="image-title" class="font-bold text-lg">Set Runner Image</h3>
+                <form id="image-form" method="POST" action="#" class="space-y-3">
+                  <div class="form-control">
+                    <label class="label"><span class="label-text">Runner Image</span></label>
+                    <input id="image-input" name="runner_image" class="input input-bordered" placeholder="e.g. ghcr.io/org/agent:tag" />
+                  </div>
+                  <div class="form-control">
+                    <label class="cursor-pointer label justify-start gap-3">
+                      <input type="checkbox" name="redeploy" value="1" class="checkbox" />
+                      <span class="label-text">Redeploy after updating</span>
+                    </label>
+                  </div>
+                  <div class="modal-action">
+                    <button class="btn" type="submit">Save</button>
+                    <button class="btn" type="button" onclick="document.getElementById('image-modal').close()">Cancel</button>
+                  </div>
+                </form>
+              </div>
+              <form method="dialog" class="modal-backdrop"><button>close</button></form>
+            </dialog>
+            <script>
+              function openEnv(agentId){
+                const dlg = document.getElementById('env-modal');
+                const pre = document.getElementById('env-pre');
+                const title = document.getElementById('env-title');
+                const reveal = document.getElementById('env-reveal');
+                const copyBtn = document.getElementById('env-copy');
+                title.textContent = 'Env for ' + agentId;
+                pre.textContent = 'Loading...';
+                dlg.showModal();
+                reveal.checked = false;
+                function load(){
+                  const url = '/admin/agents/' + encodeURIComponent(agentId) + '/env.json' + (reveal.checked ? '?reveal=1' : '');
+                  fetch(url)
+                    .then(r=>r.json())
+                    .then(d=>{
+                      if (d.error) pre.textContent = 'Error: ' + d.error; else pre.textContent = JSON.stringify(d.env || {}, null, 2);
+                    })
+                    .catch(e=>{ pre.textContent = 'Error: ' + e; });
+                }
+                reveal.onchange = load;
+                copyBtn.onclick = async function(){
+                  try { await navigator.clipboard.writeText(pre.textContent || ''); copyBtn.textContent = 'Copied'; setTimeout(()=>copyBtn.textContent='Copy', 1200);}catch(e){}
+                };
+                load();
+              }
+              function openImage(agentId){
+                const dlg = document.getElementById('image-modal');
+                const input = document.getElementById('image-input');
+                const form = document.getElementById('image-form');
+                const tr = document.querySelector(`tr[data-agent-id="${agentId}"]`);
+                const value = tr ? (tr.getAttribute('data-runner-image') || '') : '';
+                input.value = value;
+                form.action = '/admin/agents/' + encodeURIComponent(agentId) + '/runner_image';
+                dlg.showModal();
+              }
+            </script>
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-6">
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Backend</h2>
+            <p class="text-sm">Current orchestrator backend is <span class="font-mono">{{ backend }}</span>.</p>
+            <ul class="list-disc list-inside text-sm text-gray-600 mt-2">
+              <li>memory: demo-only, simulates runtime</li>
+              <li>docker: runs a container per agent with a published port</li>
+              <li>kubernetes: (coming soon) set <code class="font-mono">ORCHESTRATOR=k8s</code></li>
+            </ul>
+          </div>
+        </div>
+        <div class="card bg-base-100 shadow-xl">
+          <div class="card-body">
+            <h2 class="card-title">Tips</h2>
+            <ul class="list-disc list-inside text-sm text-gray-600">
+              <li>Set <code class="font-mono">AGENT_IMAGE</code> env to override the runner image.</li>
+              <li>Use the Console to inspect per-agent logs, metrics, and health.</li>
+              <li>Volumes are created per-agent for <code class="font-mono">/data</code> (keys, state).</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="footer p-10 bg-base-200 text-base-content">
+    <div class="container mx-auto text-center">
+      <p>&copy; 2024 Coin Monkey. All rights reserved.</p>
+    </div>
+  </footer>
+  <script>
+    (function(){
+      try {
+        const token = '{{ csrf_token() }}';
+        const forms = document.querySelectorAll('form[method="POST"], form[method="post"]');
+        for (const f of forms) {
+          if (!f.querySelector('input[name="csrf_token"]')) {
+            const i = document.createElement('input');
+            i.type = 'hidden'; i.name = 'csrf_token'; i.value = token;
+            f.appendChild(i);
+          }
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
+</body>
+</html>

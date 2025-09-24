@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coin Monkey - Admin Login</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div class="navbar bg-base-100 shadow-lg">
+    <div class="navbar-start">
+      <a class="btn btn-ghost text-xl" href="/">🐵 Coin Monkey</a>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 py-16 max-w-md">
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <h1 class="card-title text-2xl">Admin Login</h1>
+        {% if error %}
+          <div class="alert alert-error"><span>{{ error }}</span></div>
+        {% endif %}
+        <form method="POST" action="/login" class="space-y-4">
+          <div class="form-control">
+            <label class="label"><span class="label-text">Email</span></label>
+            <input type="email" name="email" class="input input-bordered" placeholder="admin@example.com" required />
+          </div>
+          <div class="form-control">
+            <label class="label"><span class="label-text">Password</span></label>
+            <input type="password" name="password" class="input input-bordered" placeholder="••••••••" required />
+          </div>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+          <div class="form-control">
+            <button type="submit" class="btn btn-primary w-full">Sign In</button>
+          </div>
+        </form>
+        <p class="text-xs text-gray-500">Seed the first admin by setting <code class="font-mono">ADMIN_EMAIL</code> and optionally <code class="font-mono">ADMIN_PASSWORD</code> or <code class="font-mono">ADMIN_PASSWORD_HASH</code>.</p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

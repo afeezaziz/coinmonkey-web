@@ -61,6 +61,12 @@ class DockerOrchestrator:
         self._image = os.getenv("AGENT_IMAGE", "ghcr.io/coinmonkey/agent-runner:latest")
         self._state: Dict[str, AgentState] = {}
         self._volume_prefix = os.getenv("AGENT_VOLUME_PREFIX", "agent-")
+        # Optional resource limits
+        try:
+            self._cpu_limit = float(os.getenv("AGENT_CPU_LIMIT", "0") or "0")  # CPUs, e.g. 0.5, 1, 2
+        except Exception:
+            self._cpu_limit = 0.0
+        self._mem_limit = os.getenv("AGENT_MEM_LIMIT")  # e.g. "512m", "1g", or bytes int
 
     def _get_container(self, agent_id: str):
         """Retrieve a container by state container_id or by name fallback."""
@@ -103,6 +109,20 @@ class DockerOrchestrator:
         if env:
             env_base.update(env)
 
+        # Image override via env
+        image = self._image
+        try:
+            if env and env.get("RUNNER_IMAGE"):
+                image = str(env.get("RUNNER_IMAGE")) or image
+        except Exception:
+            pass
+
+        # Best-effort: pull the image to ensure latest tag is available
+        try:
+            self._docker.images.pull(image)
+        except Exception:
+            pass
+
         # Optional persistent volume for keystore/data
         volumes = None
         keystore_path = env_base.get("KEYSTORE_PATH", "/data")
@@ -118,8 +138,15 @@ class DockerOrchestrator:
         if volume_name:
             volumes = {volume_name: {"bind": keystore_path, "mode": "rw"}}
 
-        container = self._docker.containers.run(
-            self._image,
+        # Labels for traceability
+        labels = {
+            "com.coinmonkey.app": "coinmonkey",
+            "com.coinmonkey.agent_id": agent_id,
+        }
+
+        # Build run kwargs with optional resource limits
+        run_kwargs = dict(
+            image=image,
             name=f"agent-{agent_id}",
             environment=env_base,
             volumes=volumes,
@@ -127,7 +154,30 @@ class DockerOrchestrator:
             detach=True,
             auto_remove=False,
             restart_policy={"Name": "unless-stopped"},
+            labels=labels,
         )
+        if self._mem_limit:
+            run_kwargs["mem_limit"] = self._mem_limit
+        if self._cpu_limit and self._cpu_limit > 0:
+            try:
+                run_kwargs["nano_cpus"] = int(self._cpu_limit * 1e9)
+            except Exception:
+                pass
+
+        # Run container, handling name conflicts gracefully
+        try:
+            container = self._docker.containers.run(**run_kwargs)
+        except Exception:
+            # Try to remove existing by name, then run again
+            try:
+                existing = self._docker.containers.get(f"agent-{agent_id}")
+                try:
+                    existing.remove(force=True)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            container = self._docker.containers.run(**run_kwargs)
         st.container_id = container.id
         # determine published host port
         try:
@@ -201,10 +251,22 @@ class DockerOrchestrator:
 
     def delete(self, agent_id: str) -> None:
         st = self._state.pop(agent_id, None)
-        if not st or not st.container_id:
+        c = None
+        # Try by stored id
+        if st and st.container_id:
+            try:
+                c = self._docker.containers.get(st.container_id)
+            except Exception:
+                c = None
+        # Fallback by name
+        if c is None:
+            try:
+                c = self._docker.containers.get(f"agent-{agent_id}")
+            except Exception:
+                c = None
+        if c is None:
             return
         try:
-            c = self._docker.containers.get(st.container_id)
             c.remove(force=True)
         except Exception:
             pass

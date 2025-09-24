@@ -17,6 +17,7 @@
         <li><a href="/">Home</a></li>
         <li><a href="/about">About</a></li>
         <li><a class="active">Console</a></li>
+        <li><a href="/admin">Admin</a></li>
       </ul>
     </div>
     <div class="navbar-end">
@@ -62,8 +63,14 @@
                     <button class="btn btn-sm join-item btn-warning" type="submit">Stop</button>
                   </form>
                   {% endif %}
+                  <form method="POST" action="/agents/{{ agent.id }}/restart">
+                    <button class="btn btn-sm join-item" type="submit">Restart</button>
+                  </form>
                   <form method="POST" action="/agents/{{ agent.id }}/redeploy">
                     <button class="btn btn-sm join-item" type="submit">Redeploy</button>
+                  </form>
+                  <form method="POST" action="/agents/{{ agent.id }}/purge" onsubmit="return confirm('Purge container and volume for this agent?');">
+                    <button class="btn btn-sm join-item btn-outline" type="submit">Purge</button>
                   </form>
                   <a href="/agents/{{ agent.id }}/metrics.txt" target="_blank" class="btn btn-sm join-item">Metrics</a>
                 </div>
@@ -120,5 +127,20 @@
       </div>
     </div>
   </footer>
+  <script>
+    (function(){
+      try {
+        const token = '{{ csrf_token() }}';
+        const forms = document.querySelectorAll('form[method="POST"], form[method="post"]');
+        for (const f of forms) {
+          if (!f.querySelector('input[name="csrf_token"]')) {
+            const i = document.createElement('input');
+            i.type = 'hidden'; i.name = 'csrf_token'; i.value = token;
+            f.appendChild(i);
+          }
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
 </body>
 </html>

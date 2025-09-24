@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 30s
+
+rule_files:
+  - rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+  - job_name: 'coinmonkey_app'
+    metrics_path: /metrics
+    static_configs:
+      # If running the app on the host at 8000 and Prometheus in Docker
+      - targets: ['host.docker.internal:8000']
+        labels:
+          env: 'local'
+    # If running all in Docker Compose, you can replace target with app service name, e.g. 'app:8000'

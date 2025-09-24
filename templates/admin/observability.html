@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Observability</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div class="container mx-auto px-4 py-10 max-w-4xl">
+    <div class="mb-6">
+      <a class="btn btn-ghost" href="/admin">← Back to Admin</a>
+    </div>
+    <div class="card bg-base-100 shadow-xl">
+      <div class="card-body">
+        <h1 class="card-title text-2xl">Observability</h1>
+        <p class="text-sm text-gray-500">Version: <span class="font-mono">{{ version }}</span>, Environment: <span class="font-mono">{{ environment }}</span></p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+          <div class="card bg-base-200">
+            <div class="card-body">
+              <h2 class="card-title">Health & Metrics</h2>
+              <ul class="list-disc ml-6">
+                <li><a class="link" href="/healthz" target="_blank">/healthz</a></li>
+                <li><a class="link" href="/readyz" target="_blank">/readyz</a></li>
+                <li><a class="link" href="/version" target="_blank">/version</a></li>
+                <li><a class="link" href="/metrics" target="_blank">/metrics</a></li>
+              </ul>
+            </div>
+          </div>
+          <div class="card bg-base-200">
+            <div class="card-body">
+              <h2 class="card-title">Dashboards</h2>
+              <ul class="list-disc ml-6">
+                <li><a class="link" href="http://localhost:3000" target="_blank">Grafana (local)</a></li>
+                <li><a class="link" href="http://localhost:9090" target="_blank">Prometheus (local)</a></li>
+              </ul>
+              <p class="text-xs text-gray-500">If running via docker-compose in ops/, these links should work locally.</p>
+            </div>
+          </div>
+        </div>
+        {% if sentry_enabled %}
+        <div class="alert alert-info mt-4"><span>Sentry is enabled</span></div>
+        {% else %}
+        <div class="alert alert-warning mt-4"><span>Sentry is not configured</span></div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</body>
+</html>

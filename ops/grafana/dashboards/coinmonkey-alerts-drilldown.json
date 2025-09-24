@@ -1,0 +1,174 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "row",
+      "title": "Filters",
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0}
+    },
+    {
+      "type": "timeseries",
+      "title": "Alert Attempts (rps) by Result",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 1},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(cm_alert_webhook_attempts_by_alert_total{agent_id=~\"$agent_id\", alert_id=~\"$alert_id\"}[5m]))",
+          "legendFormat": "{{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Alert Duration p95 (s)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 1},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(cm_alert_webhook_duration_by_alert_seconds_bucket{agent_id=~\"$agent_id\", alert_id=~\"$alert_id\"}[5m])))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Error Rate (selected alert)",
+      "gridPos": {"h": 6, "w": 6, "x": 0, "y": 9},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(cm_alert_webhook_attempts_by_alert_total{agent_id=~\"$agent_id\", alert_id=~\"$alert_id\", result=\"error\"}[5m])) / sum(rate(cm_alert_webhook_attempts_by_alert_total{agent_id=~\"$agent_id\", alert_id=~\"$alert_id\"}[5m]))",
+          "legendFormat": "error rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Blocked Rate (selected alert)",
+      "gridPos": {"h": 6, "w": 6, "x": 6, "y": 9},
+      "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": false}
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(cm_alert_webhook_attempts_by_alert_total{agent_id=~\"$agent_id\", alert_id=~\"$alert_id\", result=\"blocked\"}[5m])) / sum(rate(cm_alert_webhook_attempts_by_alert_total{agent_id=~\"$agent_id\", alert_id=~\"$alert_id\"}[5m]))",
+          "legendFormat": "blocked rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top Failing Alerts (15m)",
+      "gridPos": {"h": 10, "w": 12, "x": 12, "y": 9},
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (agent_id, alert_id) (rate(cm_alert_webhook_attempts_by_alert_total{result=\"error\"}[15m])))",
+          "legendFormat": "{{agent_id}} {{alert_id}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Orchestrator Actions (rps)",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 15},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "sum by (action, result) (rate(cm_orchestrator_actions_total[5m]))",
+          "legendFormat": "{{action}} {{result}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Scheduler Ticks & Errors (rps)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 15},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom"}},
+      "targets": [
+        {
+          "expr": "rate(cm_scheduler_tick_total[1m])",
+          "legendFormat": "ticks",
+          "refId": "A"
+        },
+        {
+          "expr": "rate(cm_scheduler_errors_total[1m])",
+          "legendFormat": "errors",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "agent_id",
+        "type": "query",
+        "label": "Agent",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
+        "query": "label_values(cm_alert_webhook_attempts_by_alert_total, agent_id)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "alert_id",
+        "type": "query",
+        "label": "Alert",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
+        "query": "label_values(cm_alert_webhook_attempts_by_alert_total{agent_id=~\"$agent_id\"}, alert_id)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["coinmonkey", "alerts", "drilldown"],
+  "time": {"from": "now-6h", "to": "now"},
+  "timepicker": {},
+  "timezone": "",
+  "title": "CoinMonkey - Alerts Drilldown",
+  "uid": null,
+  "version": 1,
+  "weekStart": ""
+}

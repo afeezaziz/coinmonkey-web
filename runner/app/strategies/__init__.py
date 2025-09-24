@@ -20,6 +20,9 @@ def load_strategy(name: str) -> Strategy:
     if name in ("marketdata", "market-data", "md"):
         from .marketdata import MarketDataStrategy
         return MarketDataStrategy()
+    if name in ("defi", "defi_rebalance", "rebalance"):
+        from .defi_rebalance import DefiRebalanceStrategy
+        return DefiRebalanceStrategy()
     # default fallback
     from .heartbeat import HeartbeatStrategy
     return HeartbeatStrategy()
